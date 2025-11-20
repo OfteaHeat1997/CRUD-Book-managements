@@ -15,24 +15,33 @@ function Write() {
             return;
         }
 
+        console.log("💾 Attempting to save book:", { title, author });
         setIsLoading(true);
-        const db = getDatabase(app);
-        const newDocRef = push(ref(db, "library/books"));
-        set(newDocRef, {
-            title: title,
-            author: author,
-        })
-            .then(() => {
-                alert("Data saved successfully");
-                setTitle("");
-                setAuthor("");
-            })
-            .catch((error) => {
-                alert("Error: " + error.message);
-            })
-            .finally(() => {
-                setIsLoading(false);
+
+        try {
+            const db = getDatabase(app);
+            console.log("✅ Database instance obtained");
+
+            const newDocRef = push(ref(db, "library/books"));
+            console.log("✅ Reference created:", newDocRef.key);
+
+            await set(newDocRef, {
+                title: title,
+                author: author,
             });
+
+            console.log("✅ Data saved successfully!");
+            alert("Data saved successfully");
+            setTitle("");
+            setAuthor("");
+        } catch (error) {
+            console.error("❌ Error saving data:", error);
+            console.error("Error code:", error.code);
+            console.error("Error message:", error.message);
+            alert("Error: " + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (

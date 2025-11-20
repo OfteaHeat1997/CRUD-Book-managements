@@ -6,26 +6,41 @@ import { useNavigate } from "react-router-dom";
 function Read() {
     const [books, setBooks] = useState([]);
     const [bookDetails, setBookDetails] = useState([]);
+    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
     const navigate = useNavigate();
 
     useEffect(() => {
         const db = getDatabase(app);
         const booksRef = ref(db, "library/books");
 
+        console.log("🔍 Starting to fetch books from Firebase...");
+
         const unsubscribe = onValue(
             booksRef,
             (snapshot) => {
+                console.log("📦 Firebase snapshot received:", snapshot.exists());
                 const data = snapshot.val();
+                console.log("📚 Data from Firebase:", data);
                 if (data) {
                     const booksArray = Object.entries(data).map(([id, book]) => ({
                         id,
                         ...book,
                     }));
+                    console.log("✅ Books array created:", booksArray);
                     setBooks(booksArray);
+                    setIsLoading(false);
+                } else {
+                    console.log("⚠️ No books found in Firebase database");
+                    setIsLoading(false);
+                    setError("No books found in database. Please add some books first!");
                 }
             },
             (error) => {
-                console.error("Error fetching data:", error);
+                console.error("❌ Error fetching data:", error);
+                console.error("Error details:", error.message, error.code);
+                setError(`Firebase Error: ${error.message || error.code || "Unknown error"}`);
+                setIsLoading(false);
             }
         );
 
@@ -37,10 +52,13 @@ function Read() {
             const details = await Promise.all(
                 books.map(async (book) => {
                     try {
-                        const response = await fetch(
-                            `https://openlibrary.org/search.json?title=${encodeURIComponent(book.title)}`
-                        );
-                        const data = await response.json();
+                        // Use CORS proxy to bypass CORS restrictions on localhost
+                        const apiUrl = `https://openlibrary.org/search.json?title=${encodeURIComponent(book.title)}`;
+                        const corsProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+
+                        const response = await fetch(corsProxy);
+                        const result = await response.json();
+                        const data = JSON.parse(result.contents);
                         if (data.docs && data.docs.length > 0) {
                             const firstResult = data.docs[0];
                             return {
@@ -78,16 +96,36 @@ function Read() {
     return (
         <div style={styles.container}>
             <h1 style={styles.header}>Books List</h1>
-            {bookDetails.length > 0 ? (
+
+            {error && (
+                <div style={styles.errorBox}>
+                    <h2 style={styles.errorTitle}>Error</h2>
+                    <p style={styles.errorText}>{error}</p>
+                </div>
+            )}
+
+            {isLoading && !error && (
+                <p style={styles.loadingText}>Connecting to Firebase...</p>
+            )}
+
+            {!isLoading && !error && bookDetails.length === 0 && books.length > 0 && (
+                <p style={styles.loadingText}>Loading book covers from Open Library...</p>
+            )}
+
+            {bookDetails.length > 0 && (
                 <div style={styles.grid}>
                     {bookDetails.map((book) => (
                         <div key={book.id} style={styles.card}>
-                            {book.coverImage && (
+                            {book.coverImage ? (
                                 <img
                                     src={book.coverImage}
                                     alt={book.title}
                                     style={styles.image}
                                 />
+                            ) : (
+                                <div style={styles.placeholderImage}>
+                                    <div style={styles.bookIcon}>📚</div>
+                                </div>
                             )}
                             <div style={styles.cardContent}>
                                 <h2 style={styles.bookTitle}>{book.title}</h2>
@@ -98,9 +136,8 @@ function Read() {
                         </div>
                     ))}
                 </div>
-            ) : (
-                <p style={styles.loadingText}>Loading book details...</p>
             )}
+
             <button onClick={() => navigate("/")} style={styles.button}>
                 Go to Home
             </button>
@@ -120,6 +157,23 @@ const styles = {
         fontSize: "2rem",
         color: "#333",
         marginBottom: "20px",
+    },
+    errorBox: {
+        backgroundColor: "#fee",
+        border: "2px solid #f00",
+        borderRadius: "8px",
+        padding: "20px",
+        margin: "20px auto",
+        maxWidth: "600px",
+    },
+    errorTitle: {
+        color: "#c00",
+        fontSize: "1.5rem",
+        marginBottom: "10px",
+    },
+    errorText: {
+        color: "#600",
+        fontSize: "1.1rem",
     },
     grid: {
         display: "grid",
@@ -151,6 +205,17 @@ const styles = {
         width: "100%",
         height: "300px",
         objectFit: "cover",
+    },
+    placeholderImage: {
+        width: "100%",
+        height: "300px",
+        backgroundColor: "#e0e0e0",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    bookIcon: {
+        fontSize: "80px",
     },
     loadingText: {
         fontSize: "1.2rem",
